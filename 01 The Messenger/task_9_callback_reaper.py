@@ -37,10 +37,27 @@ class Node:
             callback(body)
 
     def reap_expired_callbacks(self):
-        # TODO: Find and remove callbacks older than self.reap_threshold
-        # Invoke each expired callback with None to signal timeout
-        # Return the number of reaped callbacks
-        pass
+        expire_ids = []
+        for msg_id, callback in self.callbacks.items():
+            if time.time() - self.callback_times[msg_id] >= self.reap_threshold:
+                expire_ids.append(msg_id)
+
+        for expire_id in expire_ids:
+            callback = self.callbacks.pop(expire_id, None)
+            self.callback_times.pop(expire_id, None)
+            callback(None)
+
+        return len(expire_ids)
+
+    def send_fire_and_forget(self, message):
+        def callback(body):
+            pass
+            
+        body = message["body"]
+        self.async_rpc(body["target"], body["payload"], callback)
+
+        self.reap_expired_callbacks()
+        self.reply(message, {"type": "send_fire_forget_ok", "pending": len(self.callbacks)})
 
 def main():
     node = Node()
@@ -65,12 +82,11 @@ def main():
         elif msg_type == "pending_count":
             # Reply with "pending_count_ok": count.
             # TODO: Return count of pending callbacks
+            pending_count = node.reap_expired_callbacks()
+            node.reply(message, {"type": "pending_count_ok", "count": len(node.callbacks)})
             pass
         elif msg_type == "send_fire_forget":
-            # The request body has: target, payload.
-            # Reply with "send_fire_forget_ok": pending.
-            # TODO: Send async RPC with a no-op callback, reply with pending count
-            pass
+            node.send_fire_and_forget(message)
         else:
             node.handle_reply(body)
 
